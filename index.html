@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>Uçak Oyunu - Basit</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+      height: 100vh;
+      touch-action: none;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    #score {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      font-family: Arial, sans-serif;
+      font-size: 24px;
+      pointer-events: none;
+    }
+    #gameOver {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #ff4444;
+      font-size: 60px;
+      font-family: Arial, sans-serif;
+      display: none;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+<div id="score">Skor: 0</div>
+<div id="gameOver">GAME OVER</div>
+
+<canvas id="c"></canvas>
+
+<script>
+// ====================== OYUN KODU ======================
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+const gameOverEl = document.getElementById('gameOver');
+
+let W, H;
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+let skor = 0;
+let gameActive = true;
+
+// Uçak (oyuncu)
+const ucak = {
+  x: W/2,
+  y: H - 80,
+  w: 50,
+  h: 60,
+  speed: 8
+};
+
+// Düşmanlar
+let dusmanlar = [];
+function Dusman() {
+  this.x = Math.random() * (W - 40) + 20;
+  this.y = -50;
+  this.w = 40;
+  this.h = 50;
+  this.hiz = 2 + Math.random() * 2 + skor/20;
+}
+
+// Mermiler
+let mermiler = [];
+function Mermi(x, y) {
+  this.x = x;
+  this.y = y;
+  this.w = 6;
+  this.h = 18;
+  this.hiz = 12;
+}
+
+// Kontroller (dokunmatik + klavye desteği)
+let tuslar = {};
+let dokunmaX = null;
+
+window.addEventListener('keydown', e => tuslar[e.key] = true);
+window.addEventListener('keyup',   e => tuslar[e.key] = false);
+
+// Dokunmatik kontrol
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (e.touches.length > 0) {
+    dokunmaX = e.touches[0].clientX;
+  }
+}, {passive: false});
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (e.touches.length > 0) {
+    dokunmaX = e.touches[0].clientX;
+  }
+}, {passive: false});
+
+canvas.addEventListener('touchend', () => {
+  dokunmaX = null;
+});
+
+// Otomatik ateş (her 200 ms)
+let sonAtis = 0;
+function atesle() {
+  const simdi = Date.now();
+  if (simdi - sonAtis > 180) {
+    mermiler.push(new Mermi(ucak.x + ucak.w/2 - 3, ucak.y - 10));
+    sonAtis = simdi;
+  }
+}
+
+// Oyun döngüsü
+function loop() {
+  if (!gameActive) return;
+
+  ctx.fillStyle = "#0a1f44";
+  ctx.fillRect(0, 0, W, H);
+
+  // Uçak hareketi
+  let hedefX = ucak.x;
+  if (tuslar['ArrowLeft']  || tuslar['a']) hedefX -= ucak.speed;
+  if (tuslar['ArrowRight'] || tuslar['d']) hedefX += ucak.speed;
+  if (dokunmaX !== null) {
+    hedefX = dokunmaX - ucak.w/2;
+  }
+
+  ucak.x = Math.max(20, Math.min(W-70, hedefX));
+
+  // Uçak çiz
+  ctx.fillStyle = "#ffcc00";
+  ctx.fillRect(ucak.x, ucak.y, ucak.w, ucak.h);
+  ctx.fillStyle = "#ff6600";
+  ctx.fillRect(ucak.x+15, ucak.y-20, 20, 30); // burun
+
+  // Otomatik ateş
+  atesle();
+
+  // Mermileri hareket ettir & çiz
+  for (let i = mermiler.length-1; i >= 0; i--) {
+    let m = mermiler[i];
+    m.y -= m.hiz;
+
+    ctx.fillStyle = "#00ffff";
+    ctx.fillRect(m.x, m.y, m.w, m.h);
+
+    if (m.y < -20) {
+      mermiler.splice(i, 1);
+      continue;
+    }
+  }
+
+  // Düşman üret (zorluk artıyor)
+  if (Math.random() < 0.025 + skor/3000) {
+    dusmanlar.push(new Dusman());
+  }
+
+  // Düşmanları hareket ettir & çarpışma kontrolü
+  for (let i = dusmanlar.length-1; i >= 0; i--) {
+    let d = dusmanlar[i];
+    d.y += d.hiz;
+
+    // Düşman çiz (kırmızı kare + detay)
+    ctx.fillStyle = "#ff3333";
+    ctx.fillRect(d.x, d.y, d.w, d.h);
+    ctx.fillStyle = "#990000";
+    ctx.fillRect(d.x+10, d.y+10, 20, 20);
+
+    // Mermi ile çarpışma
+    for (let j = mermiler.length-1; j >= 0; j--) {
+      let m = mermiler[j];
+      if (
+        m.x < d.x + d.w &&
+        m.x + m.w > d.x &&
+        m.y < d.y + d.h &&
+        m.y + m.h > d.y
+      ) {
+        dusmanlar.splice(i, 1);
+        mermiler.splice(j, 1);
+        skor += 10;
+        scoreEl.textContent = "Skor: " + skor;
+        break;
+      }
+    }
+
+    // Uçak ile çarpışma → oyun biter
+    if (
+      ucak.x < d.x + d.w &&
+      ucak.x + ucak.w > d.x &&
+      ucak.y < d.y + d.h &&
+      ucak.y + ucak.h > d.y
+    ) {
+      gameActive = false;
+      gameOverEl.style.display = "block";
+    }
+
+    if (d.y > H + 50) {
+      dusmanlar.splice(i, 1);
+    }
+  }
+
+  requestAnimationFrame(loop);
+}
+
+loop();
+
+// Tekrar oynamak için dokununca yenile
+window.addEventListener('click', () => {
+  if (!gameActive) {
+    location.reload();
+  }
+});
+window.addEventListener('touchstart', () => {
+  if (!gameActive) {
+    location.reload();
+  }
+});
+
+</script>
+</body>
+</html>
